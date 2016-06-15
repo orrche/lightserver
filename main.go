@@ -105,8 +105,11 @@ func main() {
 			for _, cmd := range config.Commands {
 				if cmd.ID == bdy {
 					log.Printf("Running %s\n", cmd.Cmd)
-					cmd := exec.Command("bash", "-c", cmd.Cmd)
-					cmd.Start()
+					go func() {
+						cmd := exec.Command("bash", "-c", cmd.Cmd)
+						cmd.Start()
+						cmd.Wait()
+					}()
 				}
 			}
 		}
