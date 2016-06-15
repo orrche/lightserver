@@ -104,11 +104,11 @@ func main() {
 			bdy := string(d.Body)
 			for _, cmd := range config.Commands {
 				if cmd.ID == bdy {
-					log.Printf("Running %s\n", cmd.Cmd)
 					go func() {
-						cmd := exec.Command("bash", "-c", cmd.Cmd)
-						cmd.Start()
-						cmd.Wait()
+						c := exec.Command("bash", "-c", cmd.Cmd)
+						c.Start()
+						err = c.Wait()
+						log.Printf("Command finished with error: %s %v", cmd.Cmd, err)
 					}()
 				}
 			}
