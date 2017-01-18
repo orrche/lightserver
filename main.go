@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"log/syslog"
@@ -42,7 +43,7 @@ func ReadConfig() Config {
 	return config
 }
 
-func connectAndServe(config *Config) {
+func connectAndServe(config *Config, cmdChannel chan string) {
 	defer func() {
 		if r := recover(); r != nil {
 			fmt.Println("Recovered", r)
@@ -61,21 +62,23 @@ func connectAndServe(config *Config) {
 
 	for d := range msgs {
 		log.Printf("Received a message: %s\n", d.Body)
-		bdy := string(d.Body)
-		for _, cmd := range config.Commands {
-			if cmd.ID == bdy {
-				go func(cmd Command) {
-					c := exec.Command("bash", "-c", cmd.Cmd)
-					c.Start()
-					err = c.Wait()
-					log.Printf("Command %s:%s finished with error: %v", cmd.ID, cmd.Cmd, err)
-				}(cmd)
-			}
-		}
+		cmdChannel <- string(d.Body)
 	}
 }
+
+func getCommand(config Config, c string) (Command, error) {
+	for _, cmd := range config.Commands {
+		if cmd.ID == c {
+			return cmd, nil
+		}
+	}
+	return Command{}, errors.New("Not Found")
+}
+
 func main() {
 	config := ReadConfig()
+	cmdChannel := make(chan string)
+
 	logwriter, err := syslog.New(syslog.LOG_NOTICE, "lightserver")
 	if err != nil {
 		log.SetOutput(logwriter)
@@ -83,10 +86,25 @@ func main() {
 		log.Print("Unable to connect to syslog", err)
 	}
 
-	for {
-		connectAndServe(&config)
-		time.Sleep(10 * time.Second)
-		log.Print("Reconnecting")
-	}
+	go func() {
+		for {
+			connectAndServe(&config, cmdChannel)
+			time.Sleep(10 * time.Second)
+			log.Print("Reconnecting")
+		}
+	}()
 
+	for {
+		cmd, err := getCommand(config, <-cmdChannel)
+		if err != nil {
+			log.Print(err)
+			continue
+		}
+		go func(cmd Command) {
+			c := exec.Command("bash", "-c", cmd.Cmd)
+			c.Start()
+			err = c.Wait()
+			log.Printf("Command %s:%s finished with error: %v", cmd.ID, cmd.Cmd, err)
+		}(cmd)
+	}
 }
