@@ -6,6 +6,7 @@ import (
 	"log/syslog"
 	"os"
 	"os/exec"
+	"time"
 
 	"minoris.se/rabbitmq/camq"
 
@@ -40,14 +41,13 @@ func ReadConfig() Config {
 
 	return config
 }
-func main() {
-	config := ReadConfig()
-	logwriter, err := syslog.New(syslog.LOG_NOTICE, "lightserver")
-	if err != nil {
-		log.SetOutput(logwriter)
-	} else {
-		log.Print("Unable to connect to syslog", err)
-	}
+
+func connectAndServe(config *Config) {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Println("Recovered", r)
+		}
+	}()
 
 	amq := camq.GetAMQChannel(config.AMQ)
 	amq.DeclareExchange()
@@ -73,4 +73,20 @@ func main() {
 			}
 		}
 	}
+}
+func main() {
+	config := ReadConfig()
+	logwriter, err := syslog.New(syslog.LOG_NOTICE, "lightserver")
+	if err != nil {
+		log.SetOutput(logwriter)
+	} else {
+		log.Print("Unable to connect to syslog", err)
+	}
+
+	for {
+		connectAndServe(&config)
+		time.Sleep(10 * time.Second)
+		log.Print("Reconnecting")
+	}
+
 }
